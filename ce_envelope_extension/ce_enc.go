@@ -2,13 +2,23 @@ package extensions
 
 import (
 	"bytes"
+	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
+	"io"
 
 	"github.com/google/tink/go/aead"
 	"github.com/google/tink/go/core/registry"
 	"github.com/google/tink/go/integration/gcpkms"
 	"github.com/google/tink/go/keyset"
 	"github.com/google/tink/go/tink"
+
+	// GCP
+	cloudkms "cloud.google.com/go/kms/apiv1"
+	kmspb "google.golang.org/genproto/googleapis/cloud/kms/v1"
 )
 
 type EncType int
@@ -17,6 +27,7 @@ const (
 	TINK EncType = iota
 	TPM
 	SHARED
+	KMS
 )
 
 type EncryptionExtension struct {
@@ -24,6 +35,7 @@ type EncryptionExtension struct {
 	DEK    string  `json:"dek"`
 	Type   EncType `json:"type"`
 	a      tink.AEAD
+	b      cipher.AEAD
 }
 
 const (
@@ -100,6 +112,71 @@ func NewEncryptionExtension(conf *EncryptionExtension) (*EncryptionExtension, er
 		}
 		conf.a = a
 	}
+	if conf.Type == KMS {
+
+		ctx := context.Background()
+		kmsClient, err := cloudkms.NewKeyManagementClient(ctx)
+		if err != nil {
+			return &EncryptionExtension{}, fmt.Errorf("Could create KMS Client %v", err)
+		}
+
+		if conf.DEK == "" {
+			key := make([]byte, 32)
+			if _, err := io.ReadFull(rand.Reader, key); err != nil {
+				return &EncryptionExtension{}, fmt.Errorf("Could not acquire KMS AEAD %v", err)
+			}
+			block, err := aes.NewCipher(key)
+			if err != nil {
+				return &EncryptionExtension{}, fmt.Errorf("Could not create new Cipher %v", err)
+			}
+
+			conf.b, err = cipher.NewGCM(block)
+			if err != nil {
+				return &EncryptionExtension{}, fmt.Errorf("Could not acquire KMS AEAD %v", err)
+			}
+
+			req := &kmspb.EncryptRequest{
+				Name:      conf.KeyUri,
+				Plaintext: key,
+			}
+
+			result, err := kmsClient.Encrypt(ctx, req)
+			if err != nil {
+				return &EncryptionExtension{}, fmt.Errorf("Could not acquire KMS AEAD %v", err)
+			}
+			conf.DEK = base64.StdEncoding.EncodeToString(result.Ciphertext)
+
+		} else {
+
+			dd, err := base64.StdEncoding.DecodeString(conf.DEK)
+			if err != nil {
+				return &EncryptionExtension{}, fmt.Errorf("Could not decode DEK %v", err)
+			}
+
+			req := &kmspb.DecryptRequest{
+				Name:       conf.KeyUri,
+				Ciphertext: dd,
+			}
+
+			result, err := kmsClient.Decrypt(ctx, req)
+			if err != nil {
+				return &EncryptionExtension{}, fmt.Errorf("Could not acquire KMS AEAD %v", err)
+			}
+
+			block, err := aes.NewCipher(result.Plaintext)
+			if err != nil {
+				return &EncryptionExtension{}, fmt.Errorf("Could not create new Cipher %v", err)
+			}
+
+			conf.b, err = cipher.NewGCM(block)
+			if err != nil {
+				return &EncryptionExtension{}, fmt.Errorf("Could not acquire KMS AEAD %v", err)
+			}
+
+		}
+
+	}
+
 	return conf, nil
 }
 
@@ -119,6 +196,15 @@ func (d *EncryptionExtension) Encrypt(raw []byte) (encrypted []byte, err error) 
 			return []byte(""), fmt.Errorf("Could not encrypt data %v", err)
 		}
 	}
+	if d.Type == KMS {
+
+		nonce := make([]byte, d.b.NonceSize())
+		if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+			return []byte(""), fmt.Errorf("Could not encrypt data %v", err)
+		}
+		ct = d.b.Seal(nonce, nonce, raw, nil)
+
+	}
 	return ct, nil
 }
 
@@ -129,6 +215,15 @@ func (d *EncryptionExtension) Decrypt(raw []byte) (decrypted []byte, err error) 
 		if err != nil {
 			return []byte(""), fmt.Errorf("Could not decrypt data %v", err)
 		}
+	}
+	if d.Type == KMS {
+		nonceSize := d.b.NonceSize()
+		nonce, raw := raw[:nonceSize], raw[nonceSize:]
+		ct, err = d.b.Open(nil, nonce, raw, nil)
+		if err != nil {
+			return []byte(""), fmt.Errorf("Could not decrypt data %v", err)
+		}
+
 	}
 	return ct, nil
 }

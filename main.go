@@ -26,6 +26,7 @@ import (
 var (
 	projectID = flag.String("projectID", "", "ProjectID for topic and subscriber")
 	topicID   = flag.String("topicID", "", "Topic run-events")
+	keyType   = flag.String("keyType", "TINK", "Key Type used (KMS|TINK)")
 	subID     = flag.String("subID", "", "Subscription cloud-events-auditlog | cloud-events-pubsub")
 	keyUri    = flag.String("keyUri", "gcp-kms://projects/mineral-minutia-820/locations/us-central1/keyRings/pubsub-kr/cryptoKeys/key1", "Tink KMS Key URL pointing to the GCP or AWS KMS KEK Key to use")
 	mode      = flag.String("mode", "subscribe", "(required for mode=mode) mode=subscribe|publish")
@@ -79,10 +80,10 @@ func receive(ctx context.Context, event event.Event) error {
 		var eet *extensions.EncryptionExtension
 
 		if val, ok := keys[eetconf.DEK]; ok {
-			glog.V(10).Infof("Using Existing key")
+			glog.V(10).Infof("Using Existing key ")
 			eet = &val
 		} else {
-			glog.V(10).Infof("Initialize new key")
+			glog.V(10).Infof("Initialize new key ")
 			eet, err = extensions.NewEncryptionExtension(eetconf)
 			if err != nil {
 				glog.Errorf("Extension Error %v", err)
@@ -155,19 +156,27 @@ func sendMsg(msg string, projectID, topicID string) error {
 		glog.Fatalf("failed to create client, %s", err.Error())
 	}
 
-	var eet *extensions.EncryptionExtension
-	for i := 1; i < 5; i++ {
+	var tt extensions.EncType
 
-		if eet == nil || (i%2 == 0) {
+	if *keyType == "TINK" {
+		tt = extensions.TINK
+	} else if *keyType == "KMS" {
+		tt = extensions.KMS
+	}
+
+	var eet *extensions.EncryptionExtension
+	for i := 1; i < 10; i++ {
+
+		if eet == nil || (i%4 == 0) {
 			glog.V(10).Infof("Generating New Key")
 			eet, err = extensions.NewEncryptionExtension(&extensions.EncryptionExtension{
 				KeyUri: *keyUri,
+				Type:   tt,
 			})
 			if err != nil {
 				glog.Fatalf("failed to set data, %s", err.Error())
 			}
 
-			keys[eet.DEK] = *eet
 		} else {
 			glog.V(10).Infof("Using Existing Key")
 		}
@@ -188,9 +197,9 @@ func sendMsg(msg string, projectID, topicID string) error {
 
 		event.SetExtension(extensions.EncryptionExtensionName, string(out))
 
-		uu, _ := uuid.NewUUID()
-		glog.V(10).Infof("     Encrypting data: [%s]", uu.String())
-		ret, err := eet.Encrypt([]byte(uu.String()))
+		uu := fmt.Sprintf("%v %d", msg, i)
+		glog.V(10).Infof("     Encrypting data: [%s]", uu)
+		ret, err := eet.Encrypt([]byte(uu))
 		if err != nil {
 			glog.Fatalf("failed to set data, %s", err.Error())
 		}
