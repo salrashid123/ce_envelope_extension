@@ -35,7 +35,7 @@ var (
 )
 
 const (
-	pubSubEventType = "com.google.cloud.pubsub.topic.publish"
+	encryptedEventType = "com.github.salrashid123.ce_envelope_extension"
 )
 
 func main() {
@@ -63,7 +63,7 @@ func receive(ctx context.Context, event event.Event) error {
 	glog.V(20).Infof("EventID %s\n", event.ID())
 
 	switch event.Type() {
-	case pubSubEventType:
+	case encryptedEventType:
 		ic, err := types.ToString(event.Extensions()[extensions.EncryptionExtensionName])
 		if err != nil {
 			glog.Errorf("Extension Error %v", err)

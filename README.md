@@ -1,28 +1,32 @@
 
 ## Cloud Events envelope encryption extension
-     (for Pubsub)
+     (for Pubsub and HTTP)
 
 
-Sample [Cloud Events](https://cloudevents.io/) extension that describes encrypted payloads using TINK Envelope Encryption.
+Sample [Cloud Events](https://cloudevents.io/) extension that describes encrypted payloads using GCP KMS and TINK Envelope Encryption.
 
 Cloud [Events Extensions](https://github.com/cloudevents/spec/blob/v1.0/documented-extensions.md) basically just describes metadata to include into headers of any given message.
 
 This particular extension first encrypts the `Data` area of a PubSub message using either a Google Cloud KMS-backed DEK or  GCP KMS backed TINK Symmetric key.  Once encrypted, it places the key reference value and the encrypted Data Encryption Key (DEK) as the metadata value for transmission.
 
-The subscriber of the event will decode the extension and then use the encrypted key to finally decode the message.
+The receiver of the event will decode the extension and then use the encrypted key to finally decode the message.
 
 Since the extension framework is just metadata and not an 'interceptor' for pre/post processing messages, the decryption has to be done in code manually...
+
+There are two protocol implementations/samples here:  http and GCP pubsub clients.
 
 This sample sets up a pubsub topic with a subscriber as well as a symmetric GCP KMS key to use for encryption.
 
 On startup, the pubsub publisher will generate 10 messages but only rotate the derived AES DEK key three times.  This is done to avoid repeated calls to kms to rewrap the DEK (meaning, you are using the DEK a couple of times before its rotated out). The DEK and TINK ke gets embedded into the cloud event payload
 
-A sample event log is shown below showing 
+A sample event log is shown below showing for PubSub and HTTP
+
+#### Pubsub
 
 - GCP KMS DEK
 
 ```log
-$ go run main.go --mode publish --projectID $PROJECT_ID -topicID crypt-topic --keyType=KMS --keyUri=projects/mineral-minutia-820/locations/us-central1/keyRings/pubsub-kr/cryptoKeys/key1  -v 20 -alsologtostderr
+$ go run pubsub/main.go --mode publish --projectID $PROJECT_ID -topicID crypt-topic --keyType=KMS --keyUri=projects/mineral-minutia-820/locations/us-central1/keyRings/pubsub-kr/cryptoKeys/key1  -v 20 -alsologtostderr
 I1115 12:21:00.960344  185353 main.go:171] Generating New Key
 I1115 12:21:01.509476  185353 main.go:186]      DEK sha256 [df6e0a76a06fbdcebaef7f4b130b914445dd70aad00135ef9409167a89ec6489]
 I1115 12:21:01.509712  185353 main.go:201]      Encrypting data: [foo 1]
@@ -44,7 +48,7 @@ Data,
 - TINK KMS DEK
 
 ```log
-$  go run main.go --mode publish --projectID $PROJECT_ID -topicID crypt-topic --keyType=TINK --keyUri=gcp-kms://projects/$PROJECT_ID/locations/us-central1/keyRings/pubsub-kr/cryptoKeys/key1 -v 20 -alsologtostderr
+$  go run pubsub/main.go --mode publish --projectID $PROJECT_ID -topicID crypt-topic --keyType=TINK --keyUri=gcp-kms://projects/$PROJECT_ID/locations/us-central1/keyRings/pubsub-kr/cryptoKeys/key1 -v 20 -alsologtostderr
 I1115 12:19:37.741541  185133 main.go:171] Generating New Key
 I1115 12:19:38.226877  185133 main.go:186]      DEK sha256 [d4f6dbeeb9bfbe8121c7de2ce4ab42e4905bb7ea64cd07e430fbf6cc9d5c5108]
 I1115 12:19:38.227058  185133 main.go:201]      Encrypting data: [foo 1]
@@ -62,6 +66,63 @@ Data,
     "data": "AQGSIGIAAABzCiQAVjnoXbQTBExFBA5bJYezssyOKYZtmHT2UhVgOEWS5NFSTPkSSwBxDtBCK9ZXkzvyu/34o42lBwcOwAuJVnHh2yO2KaRkYexHRxS9aK7sahQHZOXXq9fKCYLWn3Qp7KzhwHq2hFWNKuYkP0ucuxXmj1fpvn81OxFa2JqH9pstrVRgLHfWZ4jo48/FPHRfShMmsA=="
   }
 ```
+
+#### HTTP
+
+- GCP KMS DEK
+
+```log
+$  go run http/main.go \
+  --mode server \
+   --projectID $PROJECT_ID \
+   --keyType=KMS \
+   --keyUri=projects/mineral-minutia-820/locations/us-central1/keyRings/pubsub-kr/cryptoKeys/key1 \
+   -v 20 -alsologtostderr
+I1116 11:09:00.045659  381635 main.go:139]   EventID: 29e4b4e9-88f8-4da8-a7bb-c18ff93c11ab
+I1116 11:09:00.046113  381635 main.go:140]   EventType: com.github.salrashid123.ce_envelope_extension 
+I1116 11:09:00.046129  381635 main.go:141]   Event Context: Context Attributes,
+  specversion: 1.0
+  type: com.github.salrashid123.ce_envelope_extension
+  source: github.com/salrashid123/tink_samples
+  id: 29e4b4e9-88f8-4da8-a7bb-c18ff93c11ab
+  time: 2020-11-16T16:09:00.044702964Z
+  datacontenttype: text/plain
+Extensions,
+  envelopeencryption: {"key_uri":"projects/mineral-minutia-820/locations/us-central1/keyRings/pubsub-kr/cryptoKeys/key1","dek":"CiQAVjnoXfvtam2xL7yNsl+pvHf85jJPXbiw/TW56pm9WT7SaVYSSQBxDtBCHoivnGirBoQsyPcZTTkxRMtWPkqtwp+Z4jIaFD79yW/E57yKaMfwsTzjJn+Ewv0OimRPEWxlImkGZ0kSlVcP4OHpfvM=","type":3}
+
+I1116 11:09:00.046241  381635 main.go:164] Initialize new key 
+I1116 11:09:00.514688  381635 main.go:174]      DEK sha256 value [0b2232797862570e7362790f5b2a429d216291aadf2336fd397b32bf90b6b121]
+I1116 11:09:00.514714  381635 main.go:176] HTTP Message K1Eyc0ZvNHB5QjNvcmVuaFNINGZUcW1NalhmNndWMk5MbFVGdmlSb1gyOWw=
+I1116 11:09:00.514728  381635 main.go:189]   Event Data: foo 1
+```
+
+- TINK KMS DEK
+
+```log
+$ go run http/main.go \
+  --mode server \
+  --projectID $PROJECT_ID \
+  --keyType=TINK \
+  --keyUri=gcp-kms://projects/$PROJECT_ID/locations/us-central1/keyRings/pubsub-kr/cryptoKeys/key1 \
+  -v 20 -alsologtostderr
+I1116 11:07:35.576300  381342 main.go:139]   EventID: 17c8aa97-e6f3-4938-9fb7-0c46ed660dc6
+I1116 11:07:35.576985  381342 main.go:140]   EventType: com.github.salrashid123.ce_envelope_extension 
+I1116 11:07:35.577012  381342 main.go:141]   Event Context: Context Attributes,
+  specversion: 1.0
+  type: com.github.salrashid123.ce_envelope_extension
+  source: github.com/salrashid123/tink_samples
+  id: 17c8aa97-e6f3-4938-9fb7-0c46ed660dc6
+  time: 2020-11-16T16:07:35.574594508Z
+  datacontenttype: text/plain
+Extensions,
+  envelopeencryption: {"key_uri":"gcp-kms://projects/mineral-minutia-820/locations/us-central1/keyRings/pubsub-kr/cryptoKeys/key1","dek":"{\"encryptedKeyset\":\"AAAAcgokAFY56F2bSmsmz4hctsj+ykOLMBxEKdFY0WWOC7CBrvzYu332EkoAcQ7QQgLmlYIU57wdWPWJHpnYRkpcWTaHWRMoEbvVLK+0Zu54ze6fHW1TsL03nRsHL2tiKxlg8a86dhJeijDcP/5o6AgrXoEOlDGvMk8QgZghEPby7uT/qnZQqRDiZKcu+5XcsMjzNPkeJP+6bkcdcmmvNiVz3c4ag6TtxIfm07Xx7xoElhnvmNW9blvHBmLgySUQm4wryugn6/i/a1/Z1jzzh18QCBWSg/8US4Rd6u0q5K8lqfqTFmvQGSDv++azB7Y4oz4PjEwlCJPP6v+W/KtdXGUxasYN7zAcrDeo5JEWwFksrnlWgDm9ybvZ9X/GG0YrIiOFnNz7CApuYI4WPk/cNH1I1dZf70Vt7wO+0J461kHa2TO8SW59KtpcY7sAfP9wXHJ9SS+bJZQB7Zmm3fDUa/z6p0zOFKVx059hKdawY3uutln1UEVfTA1IW5+1NXrj1oIANxra\",\"keysetInfo\":{\"primaryKeyId\":1552120166,\"keyInfo\":[{\"typeUrl\":\"type.googleapis.com/google.crypto.tink.KmsEnvelopeAeadKey\",\"status\":\"ENABLED\",\"keyId\":1552120166,\"outputPrefixType\":\"TINK\"}]}}","type":0}
+
+I1116 11:07:35.577233  381342 main.go:164] Initialize new key 
+I1116 11:07:35.883500  381342 main.go:174]      DEK sha256 value [b5e8aef367f055123c4e95aec50f0b29a856f2d23be6d0b2858c13a51557bc41]
+I1116 11:07:35.883561  381342 main.go:176] HTTP Message QVZ5RGVXWUFBQUJ6Q2lRQVZqbm9YVStRVUJlYzZWYWQ5UjhMR1M2RjVCVVlBRlFxL2hxTFVsR0lWNmpDZXNnU1N3QnhEdEJDY3oydFp5SVBXY1ZrQzRydnZHL1BqdHBxc09QUHM3M2VCRGRFWHU2SzJsb2VEK0NmT0lZd2lBYzJiNTJFL0IxWUF6cXA2T1M1RCtQUUpQYnZIWDlKaWUxbXJsRXQ0WkFaYkxORXRXYW0wRUlGdHpielR1NVkvWEorVnJxNmxKUzBtaVBPOXBheDJBPT0=
+I1116 11:07:35.982558  381342 main.go:189]   Event Data: foo 1
+```
+
 
 Notice the `Extensions -> envelopencryption` section.  That is the metadata that gets sent with each data. The `encryptedKeyset` is the KMS wrapped key that uses the Key Encryption Key (KEK) defined by the `key_uri`.  The inner, encrypted KEK is used to encrypt the `Data` section.
 
@@ -105,12 +166,14 @@ The following will show the key rotation frequency and the hash value of the DEK
 
 There are two supported mechanism:  using `KMS` wrapped `TINK` key and plain `KMS envelope encryption`
 
+### Pubsub
+
 #### TINK
 
 - `Publisher`
 
 ```log
-$ go run main.go \
+$ go run pubsub/main.go \
   --mode publish \
   --projectID $PROJECT_ID \
   --topicID crypt-topic \
@@ -150,7 +213,7 @@ I1115 12:24:10.103237  185930 main.go:201]      Encrypting data: [foo 9]
 - `Subscriber`
 
 ```log
-$ go run main.go \
+$ go run pubsub/main.go \
   --mode subscribe \
   --projectID $PROJECT_ID \
   --topicID crypt-topic \
@@ -193,7 +256,7 @@ I1115 12:24:10.365790  185830 main.go:117] Decrypted Pubsub Message data [foo 9]
 - `Publisher`
 
 ```log
-$ go run main.go \
+$ go run pubsub/main.go \
   --mode publish \
   --projectID $PROJECT_ID \
   --topicID crypt-topic \
@@ -233,7 +296,7 @@ I1115 13:26:35.233653  191295 main.go:201]      Encrypting data: [foo 9]
 - `Subscriber`
 
 ```log
-$ go run main.go \
+$ go run pubsub/main.go \
   --mode subscribe \
   --projectID $PROJECT_ID \
   --topicID crypt-topic \
@@ -273,4 +336,54 @@ I1115 13:26:35.322398  191210 main.go:117] Decrypted Pubsub Message data [foo 9]
 
 Unlike using KMS-TINK, using plain KMS DEK will only call KMS api if the key is rotated.
 
-![images/kms_log.png](images/kms_log.png)
+![images/kms_logs.png](images/kms_logs.png)
+
+
+### HTTP
+
+#### TINK
+
+- `HTTP Server`
+
+```bash
+ go run http/main.go \
+  --mode server \
+   --projectID $PROJECT_ID \
+   --keyType=TINK \
+   --keyUri=gcp-kms://projects/$PROJECT_ID/locations/us-central1/keyRings/pubsub-kr/cryptoKeys/key1 \
+   -v 20 -alsologtostderr
+```
+
+- `HTTP Client`
+```
+ go run http/main.go \
+   --mode client \
+   --projectID $PROJECT_ID \
+   --keyType=TINK \
+   --keyUri=gcp-kms://projects/$PROJECT_ID/locations/us-central1/keyRings/pubsub-kr/cryptoKeys/key1 \
+   -v 20 -alsologtostderr
+```
+
+#### KMS
+
+- `HTTP Server`
+
+```
+ go run http/main.go \
+  --mode server \
+   --projectID $PROJECT_ID \
+   --keyType=KMS \
+   --keyUri=projects/mineral-minutia-820/locations/us-central1/keyRings/pubsub-kr/cryptoKeys/key1 \
+   -v 20 -alsologtostderr
+```
+
+- `HTTP Client`
+
+```
+ go run http/main.go \
+   --mode client \
+   --projectID $PROJECT_ID \
+   --keyType=KMS \
+   --keyUri=projects/mineral-minutia-820/locations/us-central1/keyRings/pubsub-kr/cryptoKeys/key1 \
+   -v 20 -alsologtostderr
+```
