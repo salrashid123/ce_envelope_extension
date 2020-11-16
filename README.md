@@ -3,11 +3,11 @@
      (for Pubsub and HTTP)
 
 
-Sample [Cloud Events](https://cloudevents.io/) extension that describes encrypted payloads using GCP KMS and TINK Envelope Encryption.
+Sample [Cloud Events](https://cloudevents.io/) extension that defines how to decrypt payloads encrypted using GCP KMS and TINK Envelope Encryption.
 
-Cloud [Events Extensions](https://github.com/cloudevents/spec/blob/v1.0/documented-extensions.md) basically just describes metadata to include into headers of any given message.
+The Cloud [Events Extensions](https://github.com/cloudevents/spec/blob/v1.0/documented-extensions.md) really just describes metadata to include into headers of any given message and cannot by itself do any processing of the enclosed payload data.
 
-This particular extension first encrypts the `Data` area of a PubSub message using either a Google Cloud KMS-backed DEK or  GCP KMS backed TINK Symmetric key.  Once encrypted, it places the key reference value and the encrypted Data Encryption Key (DEK) as the metadata value for transmission.
+This particular extension first encrypts the `Data` area of a PubSub or HTTP message using either a Google Cloud KMS-backed DEK or  GCP KMS backed TINK Symmetric key.  Once encrypted, it places the key reference value and the encrypted Data Encryption Key (DEK) as the metadata value for transmission.
 
 The receiver of the event will decode the extension and then use the encrypted key to finally decode the message.
 
@@ -17,7 +17,9 @@ There are two protocol implementations/samples here:  http and GCP pubsub client
 
 This sample sets up a pubsub topic with a subscriber as well as a symmetric GCP KMS key to use for encryption.
 
-On startup, the pubsub publisher will generate 10 messages but only rotate the derived AES DEK key three times.  This is done to avoid repeated calls to kms to rewrap the DEK (meaning, you are using the DEK a couple of times before its rotated out). The DEK and TINK ke gets embedded into the cloud event payload
+On startup, the clients publisher will generate 10 messages but only rotate the derived AES DEK key three times.  This is done to avoid repeated calls to kms to rewrap the DEK (meaning, you are using the DEK a couple of times before its rotated out). The DEK and TINK keys are embedded into the cloud event payload.
+
+The receiver will decrypt the DEK and cache it locally.  If multiple messages are encrypted with the same DEK, the cached version (if found) will be used so as to not make a new KMS api call via KMS Client or TINK.
 
 A sample event log is shown below showing for PubSub and HTTP
 
