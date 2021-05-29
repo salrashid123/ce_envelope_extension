@@ -61,18 +61,17 @@ func NewEncryptionExtension(conf *EncryptionExtension) (*EncryptionExtension, er
 		if err != nil {
 			return &EncryptionExtension{}, fmt.Errorf("Could not acquire KMS AEAD %v", err)
 		}
-		masterKey := aead.NewKMSEnvelopeAEAD2(aead.AES256GCMKeyTemplate(), backend)
+
 		memKeyset := &keyset.MemReaderWriter{}
 
-		dek := aead.AES256GCMKeyTemplate()
 		if conf.DEK == "" {
 
-			kh1, err = keyset.NewHandle(aead.KMSEnvelopeAEADKeyTemplate(conf.KeyUri, dek))
+			kh1, err = keyset.NewHandle(aead.AES256GCMKeyTemplate())
 			if err != nil {
 				return &EncryptionExtension{}, fmt.Errorf("Could not create TINK keyHandle %v", err)
 			}
 
-			if err := kh1.Write(memKeyset, masterKey); err != nil {
+			if err := kh1.Write(memKeyset, backend); err != nil {
 				return &EncryptionExtension{}, fmt.Errorf("Could not serialize KeyHandle  %v", err)
 			}
 
@@ -94,13 +93,8 @@ func NewEncryptionExtension(conf *EncryptionExtension) (*EncryptionExtension, er
 			}
 
 			r := keyset.NewJSONReader(buf)
-			kse2, err := r.ReadEncrypted()
-			if err != nil {
-				return &EncryptionExtension{}, fmt.Errorf("Could not Unmarshal %v", err)
-			}
 
-			memKeyset.EncryptedKeyset = kse2
-			kh1, err = keyset.Read(memKeyset, masterKey)
+			kh1, err = keyset.Read(r, backend)
 			if err != nil {
 				return &EncryptionExtension{}, fmt.Errorf("Could not create TINK KMS Client %v", err)
 			}

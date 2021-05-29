@@ -304,7 +304,6 @@ $ go run pubsub/main.go \
   --topicID crypt-topic \
   --subID crypt-subscribe \
   --keyType=KMS \
-  --keyUri=projects/mineral-minutia-820/locations/us-central1/keyRings/pubsub-kr/cryptoKeys/key1 \
   -v 10 -alsologtostderr
 
 I1115 13:26:26.347088  191210 main.go:86] Initialize new key 
@@ -352,7 +351,6 @@ Unlike using KMS-TINK, using plain KMS DEK will only call KMS api if the key is 
   --mode server \
    --projectID $PROJECT_ID \
    --keyType=TINK \
-   --keyUri=gcp-kms://projects/$PROJECT_ID/locations/us-central1/keyRings/pubsub-kr/cryptoKeys/key1 \
    -v 20 -alsologtostderr
 ```
 
@@ -375,7 +373,6 @@ Unlike using KMS-TINK, using plain KMS DEK will only call KMS api if the key is 
   --mode server \
    --projectID $PROJECT_ID \
    --keyType=KMS \
-   --keyUri=projects/mineral-minutia-820/locations/us-central1/keyRings/pubsub-kr/cryptoKeys/key1 \
    -v 20 -alsologtostderr
 ```
 
@@ -386,6 +383,6 @@ Unlike using KMS-TINK, using plain KMS DEK will only call KMS api if the key is 
    --mode client \
    --projectID $PROJECT_ID \
    --keyType=KMS \
-   --keyUri=projects/mineral-minutia-820/locations/us-central1/keyRings/pubsub-kr/cryptoKeys/key1 \
+   --keyUri=projects/$PROJECT_ID/locations/us-central1/keyRings/pubsub-kr/cryptoKeys/key1 \
    -v 20 -alsologtostderr
 ```

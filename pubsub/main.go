@@ -187,7 +187,7 @@ func sendMsg(msg string, projectID, topicID string) error {
 
 		event := cloudevents.NewEvent()
 		event.SetID(uuid.New().String())
-		event.SetType(pubSubEventType)
+		event.SetType(encryptedEventType)
 		event.SetSource("github.com/salrashid123/tink_samples")
 
 		out, err := json.Marshal(eet.GetType())
