@@ -26,7 +26,9 @@ import (
 var (
 	projectID = flag.String("projectID", "", "ProjectID for topic and subscriber")
 	topicID   = flag.String("topicID", "", "Topic run-events")
-	keyType   = flag.String("keyType", "TINK", "Key Type used (KMS|TINK)")
+	keyType   = flag.String("keyType", "SHARED", "Key Type used (KMS|TINK|SHARED)")
+	aad       = flag.String("aad", "foo", "AAD to use")
+	dek       = flag.String("dek", "gUkXp2s5v8y/B?E(H+KbPeShVmYq3t6w", "Raw key  used (SHARED)")
 	subID     = flag.String("subID", "", "Subscription cloud-events-auditlog | cloud-events-pubsub")
 	keyUri    = flag.String("keyUri", "gcp-kms://projects/mineral-minutia-820/locations/us-central1/keyRings/pubsub-kr/cryptoKeys/key1", "Tink KMS Key URL pointing to the GCP or AWS KMS KEK Key to use")
 	mode      = flag.String("mode", "subscribe", "(required for mode=mode) mode=subscribe|publish")
@@ -77,6 +79,10 @@ func receive(ctx context.Context, event event.Event) error {
 			return err
 		}
 
+		if *keyType == "SHARED" {
+			eetconf.DEK = *dek
+		}
+
 		var eet *extensions.EncryptionExtension
 
 		if val, ok := keys[eetconf.DEK]; ok {
@@ -89,7 +95,7 @@ func receive(ctx context.Context, event event.Event) error {
 				glog.Errorf("Extension Error %v", err)
 				return err
 			}
-			keys[eet.DEK] = *eet
+			keys[eetconf.DEK] = *eet
 		}
 		h := sha256.New()
 		h.Write([]byte(eet.DEK))
@@ -108,7 +114,7 @@ func receive(ctx context.Context, event event.Event) error {
 			glog.Errorf("Error Decoding pubsub Data %v", err)
 			return err
 		}
-		s, err := eet.Decrypt(dec)
+		s, err := eet.Decrypt(dec, []byte(*aad))
 		if err != nil {
 			glog.Errorf("Error Decrypting Pubsub Data %v", err)
 			return err
@@ -162,25 +168,35 @@ func sendMsg(msg string, projectID, topicID string) error {
 		tt = extensions.TINK
 	} else if *keyType == "KMS" {
 		tt = extensions.KMS
+	} else if *keyType == "SHARED" {
+		tt = extensions.SHARED
 	}
 
 	var eet *extensions.EncryptionExtension
 	for i := 1; i < 10; i++ {
-
-		if eet == nil || (i%4 == 0) {
-			glog.V(10).Infof("Generating New Key")
+		if tt == extensions.SHARED {
 			eet, err = extensions.NewEncryptionExtension(&extensions.EncryptionExtension{
-				KeyUri: *keyUri,
-				Type:   tt,
+				DEK:  *dek,
+				Type: tt,
 			})
 			if err != nil {
-				glog.Fatalf("failed to set data, %s", err.Error())
+				glog.Fatalf("failed to create Extension %s", err.Error())
 			}
-
 		} else {
-			glog.V(10).Infof("Using Existing Key")
-		}
+			if eet == nil || (i%4 == 0) {
+				glog.V(10).Infof("Generating New Key")
+				eet, err = extensions.NewEncryptionExtension(&extensions.EncryptionExtension{
+					KeyUri: *keyUri,
+					Type:   tt,
+				})
+				if err != nil {
+					glog.Fatalf("failed to set data, %s", err.Error())
+				}
 
+			} else {
+				glog.V(10).Infof("Using Existing Key")
+			}
+		}
 		h := sha256.New()
 		h.Write([]byte(eet.DEK))
 		glog.V(10).Infof("     DEK sha256 [%s]", fmt.Sprintf("%x", h.Sum(nil)))
@@ -199,7 +215,7 @@ func sendMsg(msg string, projectID, topicID string) error {
 
 		uu := fmt.Sprintf("%v %d", msg, i)
 		glog.V(10).Infof("     Encrypting data: [%s]", uu)
-		ret, err := eet.Encrypt([]byte(uu))
+		ret, err := eet.Encrypt([]byte(uu), []byte(*aad))
 		if err != nil {
 			glog.Fatalf("failed to set data, %s", err.Error())
 		}

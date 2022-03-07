@@ -6,6 +6,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -31,7 +32,7 @@ const (
 )
 
 type EncryptionExtension struct {
-	KeyUri string  `json:"key_uri"`
+	KeyUri string  `json:"key_uri,omitempty"`
 	DEK    string  `json:"dek"`
 	Type   EncType `json:"type"`
 	a      tink.AEAD
@@ -171,6 +172,30 @@ func NewEncryptionExtension(conf *EncryptionExtension) (*EncryptionExtension, er
 
 	}
 
+	if conf.Type == SHARED {
+		if conf.DEK == "" {
+			return &EncryptionExtension{}, fmt.Errorf("DEK Cannot be null")
+		}
+		block, err := aes.NewCipher([]byte(conf.DEK))
+		if err != nil {
+			return &EncryptionExtension{}, fmt.Errorf("Could not acquire create shared AES Cipher %v", err)
+		}
+
+		conf.b, err = cipher.NewGCM(block)
+		if err != nil {
+			return &EncryptionExtension{}, fmt.Errorf("Could not acquire create shared AES Cipher %v", err)
+		}
+
+		// note, this is just a lazy hack
+		//  we're resetting the DEK value here with the hash
+		//  after we've already initialized it (i.,e conf.b already holds the cipher.AEAD with the raw key)
+		//  the only reason why we do this is to allow serializing EncryptionExtension and sending
+		//  the sha256 form of the key
+		h := sha256.New()
+		h.Write([]byte(conf.DEK))
+		conf.DEK = fmt.Sprintf("%x", h.Sum(nil))
+	}
+
 	return conf, nil
 }
 
@@ -182,7 +207,7 @@ func (d *EncryptionExtension) GetType() *EncryptionExtension {
 	}
 }
 
-func (d *EncryptionExtension) Encrypt(raw []byte) (encrypted []byte, err error) {
+func (d *EncryptionExtension) Encrypt(raw []byte, aad []byte) (encrypted []byte, err error) {
 	var ct []byte
 	if d.Type == TINK {
 		ct, err = d.a.Encrypt(raw, []byte(d.KeyUri))
@@ -190,19 +215,18 @@ func (d *EncryptionExtension) Encrypt(raw []byte) (encrypted []byte, err error) 
 			return []byte(""), fmt.Errorf("Could not encrypt data %v", err)
 		}
 	}
-	if d.Type == KMS {
-
+	if d.Type == KMS || d.Type == SHARED {
 		nonce := make([]byte, d.b.NonceSize())
 		if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
 			return []byte(""), fmt.Errorf("Could not encrypt data %v", err)
 		}
-		ct = d.b.Seal(nonce, nonce, raw, nil)
+		ct = d.b.Seal(nonce, nonce, raw, aad)
 
 	}
 	return ct, nil
 }
 
-func (d *EncryptionExtension) Decrypt(raw []byte) (decrypted []byte, err error) {
+func (d *EncryptionExtension) Decrypt(raw []byte, aad []byte) (decrypted []byte, err error) {
 	var ct []byte
 	if d.Type == TINK {
 		ct, err = d.a.Decrypt(raw, []byte(d.KeyUri))
@@ -210,10 +234,10 @@ func (d *EncryptionExtension) Decrypt(raw []byte) (decrypted []byte, err error) 
 			return []byte(""), fmt.Errorf("Could not decrypt data %v", err)
 		}
 	}
-	if d.Type == KMS {
+	if d.Type == KMS || d.Type == SHARED {
 		nonceSize := d.b.NonceSize()
 		nonce, raw := raw[:nonceSize], raw[nonceSize:]
-		ct, err = d.b.Open(nil, nonce, raw, nil)
+		ct, err = d.b.Open(nil, nonce, raw, aad)
 		if err != nil {
 			return []byte(""), fmt.Errorf("Could not decrypt data %v", err)
 		}
