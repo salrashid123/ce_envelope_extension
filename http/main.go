@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -14,7 +15,7 @@ import (
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/cloudevents/sdk-go/v2/types"
-	extensions "github.com/salrashid123/ce_envelope_extension"
+	extensions "github.com/salrashid123/ce_envelope_extension/handler"
 	//cehttp "github.com/cloudevents/sdk-go/v2/protocol/http"
 )
 
@@ -143,6 +144,8 @@ func main() {
 			glog.Fatalf("failed to create server, %v", err)
 		}
 
+		glog.V(10).Infof("Starting Server")
+
 		err = c.StartReceiver(context.Background(), Receive)
 		if err != nil {
 			glog.Fatalf("failed to StartReceiver, %v", err)
@@ -176,7 +179,12 @@ func Receive(ctx context.Context, event cloudevents.Event) error {
 
 		var eet *extensions.EncryptionExtension
 
-		if val, ok := keys[eetconf.DEK]; ok {
+		h := sha256.New()
+		h.Write([]byte(eetconf.DEK))
+		dekHash := hex.EncodeToString(h.Sum(nil))
+		glog.V(10).Infof("     DEK sha256 value [%s]", dekHash)
+
+		if val, ok := keys[dekHash]; ok {
 			glog.V(10).Infof("Using Existing key ")
 			eet = &val
 		} else {
@@ -186,11 +194,8 @@ func Receive(ctx context.Context, event cloudevents.Event) error {
 				glog.Errorf("Extension Error %v", err)
 				return err
 			}
-			keys[eetconf.DEK] = *eet
+			keys[dekHash] = *eet
 		}
-		h := sha256.New()
-		h.Write([]byte(eet.DEK))
-		glog.V(10).Infof("     DEK sha256 value [%s]", fmt.Sprintf("%x", h.Sum(nil)))
 
 		glog.V(20).Infof("HTTP Message %s\n", base64.StdEncoding.EncodeToString(event.Data()))
 

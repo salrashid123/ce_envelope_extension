@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -19,7 +20,7 @@ import (
 	"github.com/cloudevents/sdk-go/v2/event"
 	"github.com/cloudevents/sdk-go/v2/types"
 	"github.com/google/uuid"
-	extensions "github.com/salrashid123/ce_envelope_extension"
+	extensions "github.com/salrashid123/ce_envelope_extension/handler"
 	p "google.golang.org/api/pubsub/v1"
 )
 
@@ -85,7 +86,12 @@ func receive(ctx context.Context, event event.Event) error {
 
 		var eet *extensions.EncryptionExtension
 
-		if val, ok := keys[eetconf.DEK]; ok {
+		h := sha256.New()
+		h.Write([]byte(eetconf.DEK))
+		dekHash := hex.EncodeToString(h.Sum(nil))
+		glog.V(10).Infof("     DEK sha256 value [%s]", dekHash)
+
+		if val, ok := keys[dekHash]; ok {
 			glog.V(10).Infof("Using Existing key ")
 			eet = &val
 		} else {
@@ -95,11 +101,8 @@ func receive(ctx context.Context, event event.Event) error {
 				glog.Errorf("Extension Error %v", err)
 				return err
 			}
-			keys[eetconf.DEK] = *eet
+			keys[dekHash] = *eet
 		}
-		h := sha256.New()
-		h.Write([]byte(eet.DEK))
-		glog.V(10).Infof("     DEK sha256 value [%s]", fmt.Sprintf("%x", h.Sum(nil)))
 
 		pubsubData := &p.PubsubMessage{}
 		if err := event.DataAs(pubsubData); err != nil {

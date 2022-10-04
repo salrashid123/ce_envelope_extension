@@ -43,7 +43,8 @@ as the encrypted data.
 The server will load the same shared key and extension. Then decrypt and display the data 
 
 ```log
- go run http/main.go \
+cd http/
+go run main.go \
   --mode server \
    --keyType=SHARED \
    --dek="gUkXp2s5v8y/B?E(H+KbPeShVmYq3t6w" \
@@ -75,7 +76,7 @@ On the subscriber side, the  KEK gets cached locally to avoid repeated lookups. 
 To run the http client:
 
 ```log
- go run http/main.go \
+ go run main.go \
    --mode client \
    --keyType=SHARED \
    --dek="gUkXp2s5v8y/B?E(H+KbPeShVmYq3t6w" \
@@ -132,13 +133,14 @@ The following http cloud events sample will run a client/server in each of the t
 
 
 ```bash
- go run http/main.go \
+cd http/
+ go run main.go \
   --mode server \
    --keyType=SHARED \
    --dek="gUkXp2s5v8y/B?E(H+KbPeShVmYq3t6w" \
    -v 20 -alsologtostderr
 
- go run http/main.go \
+ go run main.go \
    --mode client \
    --serverAddress http://localhost:8080/ \
    --keyType=SHARED \
@@ -149,14 +151,15 @@ The following http cloud events sample will run a client/server in each of the t
 ### KMS
 
 ```bash
-go run http/main.go \
+cd http
+go run main.go \
   --mode server \
    --projectID $PROJECT_ID \
    --keyType=KMS \
    --keyUri=projects/$PROJECT_ID/locations/us-central1/keyRings/pubsub-kr/cryptoKeys/key1 \
    -v 20 -alsologtostderr
 
-go run http/main.go \
+go run main.go \
    --mode client \
    --serverAddress http://localhost:8080/ \
    --keyType=KMS \
@@ -190,14 +193,15 @@ I0306 12:47:35.094614   95349 main.go:208]   Event Data: foo 1
 ### TINK KMS
 
 ```bash
-go run http/main.go \
+cd http/
+go run main.go \
   --mode server \
    --projectID $PROJECT_ID \
    --keyType=TINK \
    --keyUri=gcp-kms://projects/$PROJECT_ID/locations/us-central1/keyRings/pubsub-kr/cryptoKeys/key1 \
    -v 20 -alsologtostderr
 
-go run http/main.go \
+go run main.go \
    --mode client \
    --serverAddress http://localhost:8080/ \
    --keyType=TINK \
@@ -234,7 +238,8 @@ The following pubsub cloudevents sample will run a client/server in each of the 
 ### Shared
 
 ```bash
-go run pubsub/main.go \
+cd pubsub/
+go run main.go \
   --mode subscribe \
   --projectID $PROJECT_ID \
   --topicID crypt-topic \
@@ -243,7 +248,7 @@ go run pubsub/main.go \
    --dek="gUkXp2s5v8y/B?E(H+KbPeShVmYq3t6w" \
   -v 20 -alsologtostderr
 
-go run pubsub/main.go \
+go run main.go \
   --mode publish \
   --projectID $PROJECT_ID \
   --topicID crypt-topic \
@@ -255,7 +260,8 @@ go run pubsub/main.go \
 ### KMS
 
 ```bash
-go run pubsub/main.go \
+cd pubsub/
+go run main.go \
   --mode subscribe \
   --projectID $PROJECT_ID \
   --topicID crypt-topic \
@@ -263,7 +269,7 @@ go run pubsub/main.go \
   --keyType=KMS \
   -v 10 -alsologtostderr
 
-go run pubsub/main.go \
+go run main.go \
   --mode publish \
   --projectID $PROJECT_ID \
   --topicID crypt-topic \
@@ -274,7 +280,7 @@ go run pubsub/main.go \
 ### TINK KMS
 
 ```bash
-go run pubsub/main.go \
+go run main.go \
   --mode subscribe \
   --projectID $PROJECT_ID \
   --topicID crypt-topic \
@@ -283,7 +289,7 @@ go run pubsub/main.go \
   --keyUri=gcp-kms://projects/$PROJECT_ID/locations/us-central1/keyRings/pubsub-kr/cryptoKeys/key1 \
   -v 10 -alsologtostderr
 
-go run pubsub/main.go   --mode publish  \
+go run main.go   --mode publish  \
    --projectID $PROJECT_ID  \
    --topicID crypt-topic \
    --keyType=TINK \
